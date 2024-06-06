@@ -4,24 +4,8 @@ import time
 
 wos_api_key = '123'
 
-
-def format_citation(jif_df):
-    for index, pub in jif_df.iterrows():
-        if not pd.isna(pub['JIF']):
-            citation = f"IF: {pub['JIF']} ({pub['JIFYear']}). {pub['Authors']} {pub['Title']}. {pub['Source title']}. " \
-                       f"{pub['Year']};{pub['Volume']}({pub['Issue']}):{str(pub['Page start'])}-{str(pub['Page end'])}. {pub['DOI']}."
-        else:
-            citation = f"{pub['Authors']} {pub['Title']}. {pub['Source title']}. " \
-                       f"{pub['Year']};{pub['Volume']}({pub['Issue']}):{str(pub['Page start'])}-{str(pub['Page end'])}. {pub['DOI']}."
-        print(citation)
-        jif_df.at[index, 'amaCitation'] = citation
-
-    return jif_df
-
-
 # methods are 1 - jif_ranks and 2 - jif_only
 def wos_api(method, issn, year):
-    print("*********** WOS - ISSN " + issn + " for " + str(year) + " **************")
     wos_url = 'https://api.clarivate.com/apis/wos-journals/v1/journals'
 
     headers = {
@@ -54,72 +38,80 @@ def process_wos_data(scopus_excel_df):
 
     total = len(scopus_excel_df)
     processed_jifs = {}
-
+    issn_value = 'eIssn'
+    year_value = '2022'
     for index, row in scopus_excel_df.iterrows():
         count = index + 1
-        print("getting row " + str(count) + " out of " + str(total))
-        if not pd.isna(row['ISSN']):
-            if row['ISSN'] in processed_jifs:
-                print("pulling " + row['ISSN'] + " data from processed_jifs")
-                scopus_excel_df.at[index, 'JIF'] = processed_jifs[row['ISSN']].get('jif')
-                scopus_excel_df.at[index, 'JIFYear'] = processed_jifs[row['ISSN']].get('jifyear')
-                scopus_excel_df.at[index, 'JIFCategory'] = processed_jifs[row['ISSN']].get('jifcategory')
-                scopus_excel_df.at[index, 'JIFRank'] = processed_jifs[row['ISSN']].get('jifrank')
-            else:
-                wos_journal = wos_api(1, row['ISSN'], '2022')
-
-                if wos_journal['hits']:
-                    try:
-                        scopus_excel_df.at[index, 'JIF'] = wos_journal['hits'][0]['metrics']['impactMetrics']['jif']
-                        scopus_excel_df.at[index, 'JIFYear'] = str(wos_journal['hits'][0]['journalCitationReports'][0]['year'])
-                        scopus_excel_df.at[index, 'JIFCategory'] = wos_journal['hits'][0]['ranks']['jif'][0]['category']
-                        scopus_excel_df.at[index, 'JIFRank'] = wos_journal['hits'][0]['ranks']['jif'][0]['rank'].split("/")[0]
-                        processed_jifs[row['ISSN']] = {
-                            'jif': wos_journal['hits'][0]['metrics']['impactMetrics']['jif'],
-                            'jifyear': str(wos_journal['hits'][0]['journalCitationReports'][0]['year']),
-                            'jifcategory': wos_journal['hits'][0]['ranks']['jif'][0]['category'],
-                            'jifrank': wos_journal['hits'][0]['ranks']['jif'][0]['rank'].split("/")[0]
-                        }
-                    except KeyError:
-                        continue
-                    except IndexError:
-                        continue
+        if pd.isna(row['jif']):
+            #if count < 10:
+            if count % 50 == 0:
+                print("SAVING...")
+                jif_df.to_excel(jif_file, index=False)
+            print("getting row " + str(count) + " out of " + str(total))
+            if not pd.isna(row[issn_value]):
+                current_issn = row[issn_value]
+                if row[issn_value] in processed_jifs:
+                    print("pulling " + current_issn + " data from processed_jifs")
+                    scopus_excel_df.at[index, 'jif'] = processed_jifs[current_issn].get('jif')
+                    scopus_excel_df.at[index, 'jifYear'] = processed_jifs[current_issn].get('jifYear')
+                    scopus_excel_df.at[index, 'jifCategory'] = processed_jifs[current_issn].get('jifCategory')
+                    scopus_excel_df.at[index, 'jifRank'] = processed_jifs[current_issn].get('jifRank')
                 else:
-                    wos_journal = wos_api(2, row['ISSN'], '2022')
+                    print("*********** WOS - ISSN " + current_issn + " for " + str(year_value) + " **************")
+                    wos_journal = wos_api(1, current_issn, year_value)
+
                     if wos_journal['hits']:
                         try:
-                            scopus_excel_df.at[index, 'JIF'] = wos_journal['hits'][0]['metrics']['impactMetrics']['jif']
-                            scopus_excel_df.at[index, 'JIFYear'] = wos_journal['hits'][0]['journalCitationReports'][0]['year']
-                            scopus_excel_df.at[index, 'JIFCategory'] = ""
-                            scopus_excel_df.at[index, 'JIFRank'] = ""
-                            processed_jifs[row['ISSN2']] = {
+                            scopus_excel_df.at[index, 'jif'] = wos_journal['hits'][0]['metrics']['impactMetrics']['jif']
+                            scopus_excel_df.at[index, 'jifYear'] = str(wos_journal['hits'][0]['journalCitationReports'][0]['year'])
+                            scopus_excel_df.at[index, 'jifCategory'] = wos_journal['hits'][0]['ranks']['jif'][0]['category']
+                            scopus_excel_df.at[index, 'jifRank'] = wos_journal['hits'][0]['ranks']['jif'][0]['rank'].split("/")[0]
+                            processed_jifs[current_issn] = {
                                 'jif': wos_journal['hits'][0]['metrics']['impactMetrics']['jif'],
-                                'jifyear': wos_journal['hits'][0]['journalCitationReports'][0]['year'],
-                                'jifcategory': "",
-                                'jifrank': ""
+                                'jifYear': str(wos_journal['hits'][0]['journalCitationReports'][0]['year']),
+                                'jifCategory': wos_journal['hits'][0]['ranks']['jif'][0]['category'],
+                                'jifRank': wos_journal['hits'][0]['ranks']['jif'][0]['rank'].split("/")[0]
                             }
                         except KeyError:
                             continue
                         except IndexError:
                             continue
+                    else:
+                        wos_journal = wos_api(2, current_issn, year_value)
+                        if wos_journal['hits']:
+                            try:
+                                scopus_excel_df.at[index, 'jif'] = wos_journal['hits'][0]['metrics']['impactMetrics']['jif']
+                                scopus_excel_df.at[index, 'jifYear'] = wos_journal['hits'][0]['journalCitationReports'][0]['year']
+                                scopus_excel_df.at[index, 'jifCategory'] = ""
+                                scopus_excel_df.at[index, 'jifRank'] = ""
+                                processed_jifs[row[issn_value]] = {
+                                    'jif': wos_journal['hits'][0]['metrics']['impactMetrics']['jif'],
+                                    'jifYear': wos_journal['hits'][0]['journalCitationReports'][0]['year'],
+                                    'jifCategory': "",
+                                    'jifRank': ""
+                                }
+                            except KeyError:
+                                continue
+                            except IndexError:
+                                continue
 
-                time.sleep(1)
+                    time.sleep(1)
 
     return scopus_excel_df
 
 
 if __name__ == "__main__":
-    scopus_file = 'scopus_file_with_issns.xlsx'
-    results_file = 'wos_jif_final.xlsx'
+    ##UPDATE THE JIF_YEAR AND FILE NAMES. FIRST RUN IT ON THE SCOPUS_FILE. RERUN THIS FILE WITH THE JIF_FILE YEAR BEFORE THAT TO GET MORE RESULTS
+    scopus_file = '../medical_jif_scopus_authors_5-9.xlsx'
+    jif_file = '../medical_jif_jifs_authors_5-9.xlsx'
+    results_file = '../medical_jif_results_authors_5-9.xlsx'
 
     print("Reading Scopus File...")
-    jif_df = pd.read_excel(scopus_file)
+    #USE SCOPUS_FILE FOR FIRST RUN. FOR SUBSEQUENT RUNS, USE JIF_FILE
+    ##MAKE SURE TO RUN BOTH ISSN AND EISSN
+    jif_df = pd.read_excel(jif_file)
     jif_df.fillna(value="")
 
     print("Starting WOS Process...")
     jif_df = process_wos_data(jif_df)
-    jif_df.to_excel(results_file, index=False)
-
-    print("Formatting Citations...")
-    jif_df = format_citation(jif_df)
-    jif_df.to_excel(results_file, index=False)
+    jif_df.to_excel(jif_file, index=False)
