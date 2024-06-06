@@ -5,12 +5,13 @@ import sys
 import time
 
 list_of_scopus = []
-medical_jif_scopus = "medical_jif_scopus.xlsx"
-medical_jif_jif = "medical_jif_jif.xlsx"
-medical_jif_final = "medical_jif_final.xlsx"
+medical_jif_scopus = "medical_jif_scopus_authors_5-9.xlsx"
+medical_jif_jif = "medical_jif_scopus_authors_5-9.xlsx"
+medical_jif_final = "medical_jif_scopus_authors_5-9.xlsx"
 scopus_api_key = '123'
-wos_api_key = '123'
+wos_api_key = '456'
 um_affiliations = ['60021519', '60017287', '60004546', '60122645', '60009932', '60122646', '60016686', '60020817', '60122645', '60011479', '60017510']
+# issn jif jifYear jifCategory jifRank creator title journal {year;volume;issue;pages doi. pubmedId aggregationType affiliation
 journal_dict = {'issn': None,
                 'eIssn': None,
                 'jif': None,
@@ -66,6 +67,7 @@ def format_citation():
         # print(journal)
         df.to_excel(medical_jif_final, index=False)
 
+
 def export_to_excel(data):
     # convert array into dataframe
     df = pd.DataFrame(data=data)
@@ -87,30 +89,8 @@ def get_scopus_search_api(start):
         'accept': 'application/json',
         'X-ELS-APIKey': scopus_api_key
     }
-    	params = {'query': '( '
-							    'AF-ID ( "University of Miami Leonard M. Miller School of Medicine" 60021519 ) '
-							    'OR AF-ID ( "Jackson Health System" 60017287 ) '
-							    'OR AF-ID ( "Jackson Memorial Hospital" 60004546 ) '
-							    'OR AF-ID ( "Miami Transplant Institute" 60122645 ) '
-							    'OR AF-ID ( "The Miami Project to Cure Paralysis" 60009932 ) '
-						    	'OR AF-ID ( "University of Miami Health System" 60122646 ) '
-						    	'OR AF-ID ( "Bascom Palmer Eye Institute" 60016686 ) '
-					    		'OR AF-ID ( "Ear Institute" 60020817 ) '
-					    		'OR AF-ID ( "Sylvester Comprehensive Cancer Center" 60011479 ) '
-					    		'OR AF-ID ( "UHealth Tower" 60017510 ) ) '
-					    		'AND ( PUBDATETXT ( "June 2022" '
-						    	'OR "July 2022" '
-							    'OR "August 2022" '
-							    'OR "September 2022" '
-							    'OR "October 2022" '
-							    'OR "November 2022" '
-							    'OR "December 2022" '
-						    	'OR "January 2023" '
-						    	'OR "February 2023" '
-							    'OR "March 2023" '
-							    'OR "April 2023" '
-						    	'OR "May 2023" '
-						    ') )',
+    params = {'query': '( AF-ID ( "University of Miami Leonard M. Miller School of Medicine" 60021519 )  )  AND PUBYEAR = 2023',
+              # 'facets': 'authname',
               'view': 'COMPLETE',
               'start': start
               }
@@ -121,14 +101,19 @@ def get_scopus_search_api(start):
     # print(response.url)
     # print(response.text)
     # print(response.status_code)
-    json_response = response.json()
-    try:
-        response = json_response['search-results']
-    except KeyError:
-        print(json_response)
-        print("No Search Results, also check VPN connection")
+    if response.status_code == 200:
+        json_response = response.json()
+        try:
+            response = json_response['search-results']
+        except KeyError:
+            print(json_response)
+            print("No Search Results, also check VPN connection")
+            sys.exit(1)
+        return response
+    else:
+        print(response.text)
+        print(response.status_code)
         sys.exit(1)
-    return response
 
 
 def get_scopus_author_api(author_id):
@@ -170,6 +155,7 @@ def get_wos_api():
     scopus_excel_df = pd.read_excel(medical_jif_scopus)
     total = len(scopus_excel_df)
 
+    #for index, row in scopus_excel_df.iloc[:5].iterrows():
     for index, row in scopus_excel_df.iterrows():
         count = index + 1
         print("getting wos " + str(count) + " out of " + str(total))
@@ -234,6 +220,11 @@ def get_wos_api():
             # print(wos_journal['hits'][0]['metrics']['impactMetrics']['jif'])
             print(wos_journal['hits'][0])
             try:
+                #row.update({'jif': wos_journal['hits'][0]['metrics']['impactMetrics']['jif']})
+                #row.update({'jifYear': wos_journal['hits'][0]['journalCitationReports'][0]['year']})
+                #row.update({'jifCategory': wos_journal['hits'][0]['ranks']['jif'][0]['category']})
+                #rank = wos_journal['hits'][0]['ranks']['jif'][0]['rank'].split("/")
+                #row.update({'jifRank': rank[0]})
                 scopus_excel_df.at[index, 'jif'] = wos_journal['hits'][0]['metrics']['impactMetrics']['jif']
                 scopus_excel_df.at[index, 'jifYear'] = wos_journal['hits'][0]['journalCitationReports'][0]['year']
                 scopus_excel_df.at[index, 'jifCategory'] = wos_journal['hits'][0]['ranks']['jif'][0]['category']
@@ -270,7 +261,8 @@ def append_scopus_results(results):
                     affiliated = False
                     for affiliation in author.get('afid'):
                         if affiliation.get('$') in um_affiliations:
-                            department = get_scopus_author_api(author.get("authid"))
+                            #No department call for testing
+                            #department = get_scopus_author_api(author.get("authid"))
                             department = ""
                             if department:
                                 um_authors.append(author.get("authname") + " (" + department + ")")
@@ -325,6 +317,7 @@ if __name__ == "__main__":
     pages = math.ceil(int(scopus_search_results['opensearch:totalResults']) / 25)
     current_page = 1
     while current_page <= pages:
+    ##while current_page == 1:
        print("getting page " + str(current_page) + " out of " + str(pages))
        scopus_search_results = get_scopus_search_api(start)
        append_scopus_results(scopus_search_results['entry'])
@@ -341,3 +334,5 @@ if __name__ == "__main__":
     df_with_jif.to_excel(medical_jif_jif, index=False)
     print("writing citation")
     format_citation()
+    export_to_csv(citations)
+    export_to_excel(df_with_jif)
